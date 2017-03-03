@@ -307,5 +307,24 @@ describe GraphQL::Relay::Mutation do
 
       assert_equal(expected, result)
     end
+
+    it "returns a subsequent successful result" do
+      query_string = <<-GRAPHQL
+        mutation {
+          addShip1: introduceShip(input: {shipName: "Millennium Falcon", factionId: "1"}) {
+            shipEdge { node { name } }
+          }
+          addShip2: introduceShip(input: {shipName: "Bagel", factionId: "1"}) {
+            shipEdge { node { name } }
+          }
+        }
+      GRAPHQL
+
+      res = star_wars_query(query_string)
+
+      assert_equal ["Sorry, Millennium Falcon ship is reserved"], res["errors"].map { |e| e["message"] }
+      assert_equal nil, res["data"]["addShip1"].fetch("shipEdge")
+      assert_equal "Bagel", res["data"]["addShip2"]["shipEdge"]["node"]["name"]
+    end
   end
 end
