@@ -267,17 +267,15 @@ describe GraphQL::Relay::Mutation do
 
       expected = {
         "data" => {
-          "introduceShip" => {
-            "clientMutationId" => "5678",
-            "shipEdge" => nil,
-            "faction" => nil,
-          }
+          "introduceShip" => nil
         },
         "errors" => [
           {
             "message" => "Sorry, Millennium Falcon ship is reserved",
             "locations" => [ { "line" => 3 , "column" => 7}],
             "path" => ["introduceShip"]
+          }, {
+            "message" => "Cannot return null for non-nullable field IntroduceShipPayload.shipEdge"
           }
         ]
       }
@@ -290,17 +288,15 @@ describe GraphQL::Relay::Mutation do
 
       expected = {
         "data" => {
-          "introduceShip" => {
-            "clientMutationId" => "5678",
-            "shipEdge" => nil,
-            "faction" => nil,
-          }
+          "introduceShip" => nil
         },
         "errors" => [
           {
             "message" => "💥",
             "locations" => [ { "line" => 3 , "column" => 7}],
             "path" => ["introduceShip"]
+          }, {
+            "message" => "Cannot return null for non-nullable field IntroduceShipPayload.shipEdge"
           }
         ]
       }
@@ -322,8 +318,8 @@ describe GraphQL::Relay::Mutation do
 
       res = star_wars_query(query_string)
 
-      assert_equal ["Sorry, Millennium Falcon ship is reserved"], res["errors"].map { |e| e["message"] }
-      assert_equal nil, res["data"]["addShip1"].fetch("shipEdge")
+      assert_equal ["Sorry, Millennium Falcon ship is reserved", "Cannot return null for non-nullable field IntroduceShipPayload.shipEdge"], res["errors"].map { |e| e["message"] }
+      assert_equal nil, res["data"].fetch("addShip1")
       assert_equal "Bagel", res["data"]["addShip2"]["shipEdge"]["node"]["name"]
     end
   end

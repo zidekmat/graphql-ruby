@@ -160,7 +160,7 @@ module StarWars
     input_field :factionId, !types.ID
 
     # Result may have access to these fields:
-    return_field :shipEdge, Ship.edge_type
+    return_field :shipEdge, !Ship.edge_type
     return_field :faction, Faction
 
     # Here's the mutation operation:
