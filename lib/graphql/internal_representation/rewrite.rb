@@ -16,6 +16,58 @@ module GraphQL
     class Rewrite
       include GraphQL::Language
 
+      class Scope
+        def initialize(query, types:)
+          @query = query
+
+          case types
+          when Set
+            @types = types
+            @mode = :concrete
+          when GraphQL::UnionType, GraphQL::InterfaceType
+            @types = types
+            @mode = :abstract
+          end
+        end
+
+        def enter(types:)
+          if types == @types
+            self
+          elsif @mode == :concrete
+            Scope.new(@query, types: types.intersect(@types))
+          elsif @mode == :abstract
+            Scope.new(@query, types: intersect_types(@types, types))
+          end
+        end
+
+        private
+
+        def intersect_types(abstract_type, new_types)
+          case new_types
+          when GraphQL::UnionType, GraphQL::InterfaceType
+            new_concrete_types = @query.possible_types_set(new_types)
+          when GraphQL::ObjectType
+            new_concrete_types = Set.new
+            new_concrete_types.add(new_types)
+          when Set
+            new_concrete_types = new_types
+          when Array
+            new_concrete_types = Set.new(new_types)
+          else
+            raise("Unexpected types to enter: #{new_types}")
+          end
+
+          old_concrete_types = @query.possible_types_set(abstract_type)
+
+          if new_concrete_types.subset?(old_concrete_types)
+            # This new abstract scope is a subset of the old one, so use that
+            new_types
+          else
+            old_concrete_types & new_concrete_types
+          end
+        end
+      end
+
       NO_DIRECTIVES = [].freeze
 
       # @return [Hash<String, Node>] Roots of this query
@@ -34,7 +86,7 @@ module GraphQL
         # Array<Set<InternalRepresentation::Node>>
         # The current point of the irep_tree during visitation
         nodes_stack = []
-        # Array<Set<GraphQL::ObjectType>>
+        # Array<Scope>
         # Object types that the current point of the irep_tree applies to
         scope_stack = []
         fragment_definitions = {}
@@ -58,15 +110,8 @@ module GraphQL
           end
 
           if skip_nodes.none?
-            next_scope = Set.new
             prev_scope = scope_stack.last
-            each_type(query, context.type_definition) do |obj_type|
-              # What this fragment can apply to is also determined by
-              # the scope around it (it can't widen the scope)
-              if prev_scope.include?(obj_type)
-                next_scope.add(obj_type)
-              end
-            end
+            next_scope = prev_scope.enter(types: context.type_definition)
             scope_stack.push(next_scope)
           end
         }
@@ -90,31 +135,28 @@ module GraphQL
             node_name = ast_node.alias || ast_node.name
             parent_nodes = nodes_stack.last
             next_nodes = []
-            next_scope = Set.new
-            applicable_scope = scope_stack.last
+            field_defn = context.field_definition
+            prev_scope = scope_stack.last
 
-            applicable_scope.each do |obj_type|
-              # Can't use context.field_definition because that might be
-              # a definition on an interface type
-              field_defn = query.get_field(obj_type, ast_node.name)
-              if field_defn.nil?
-                # It's a non-existent field
-              else
-                field_return_type = field_defn.type.unwrap
-                each_type(query, field_return_type) do |obj_type|
-                  next_scope.add(obj_type)
-                end
-                parent_nodes.each do |parent_node|
-                  node = parent_node.typed_children[obj_type][node_name] ||= Node.new(
-                    name: node_name,
-                    owner_type: obj_type,
-                    query: query,
-                    return_type: field_return_type,
-                  )
-                  node.ast_nodes.add(ast_node)
-                  node.definitions.add(field_defn)
-                  next_nodes << node
-                end
+            # Can't use context.field_definition because that might be
+            # a definition on an interface type
+            if field_defn.nil?
+              # It's a non-existent field
+              next_scope = nil
+            else
+              field_return_type = field_defn.type.unwrap
+              next_scope = Scope.new(query, types: field_return_type)
+              obj_type = context.parent_type_definition.unwrap
+              parent_nodes.each do |parent_node|
+                node = parent_node.scoped_children[obj_type][node_name] ||= Node.new(
+                  name: node_name,
+                  owner_type: obj_type,
+                  query: query,
+                  return_type: field_return_type,
+                )
+                node.ast_nodes.add(ast_node)
+                node.definitions.add(field_defn)
+                next_nodes << node
               end
             end
             nodes_stack.push(next_nodes)
@@ -178,25 +220,6 @@ module GraphQL
         end
       end
 
-      # @see {.each_type}
-      def each_type(query, owner_type, &block)
-        self.class.each_type(query, owner_type, &block)
-      end
-
-      # Call the block for each of `owner_type`'s possible types
-      def self.each_type(query, owner_type)
-        case owner_type
-        when GraphQL::ObjectType, GraphQL::ScalarType, GraphQL::EnumType
-          yield(owner_type)
-        when GraphQL::UnionType, GraphQL::InterfaceType
-          query.possible_types(owner_type).each(&Proc.new)
-        when GraphQL::InputObjectType, nil
-          # this is an error, don't give 'em nothin
-        else
-          raise "Unexpected owner type: #{owner_type.inspect}"
-        end
-      end
-
       def skip?(ast_node, query)
         dir = ast_node.directives
         dir.any? && !GraphQL::Execution::DirectiveChecks.include?(dir, query)
@@ -215,11 +238,8 @@ module GraphQL
           # Either QueryType or the fragment type condition
           owner_type = @context.type_definition && @context.type_definition.unwrap
           next_nodes = []
-          next_scope = Set.new
+          next_scope = Scope.new(@query, types: owner_type)
           defn_name = ast_node.name
-          Rewrite.each_type(@query, owner_type) do |obj_type|
-            next_scope.add(obj_type)
-          end
 
           node = Node.new(
             name: defn_name,

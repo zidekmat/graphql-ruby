@@ -8,6 +8,10 @@ module GraphQLBenchmark
   DOCUMENT = GraphQL.parse(QUERY_STRING)
   SCHEMA = Dummy::Schema
 
+  BENCHMARK_PATH = File.expand_path("../", __FILE__)
+  CARD_SCHEMA = GraphQL::Schema.from_definition(File.read(File.join(BENCHMARK_PATH, "schema.graphql")))
+  ABSTRACT_FRAGMENTS = GraphQL.parse(File.read(File.join(BENCHMARK_PATH, "abstract_fragments.graphql")))
+
   module_function
   def self.run(task)
     Benchmark.ips do |x|
@@ -15,7 +19,8 @@ module GraphQLBenchmark
       when "query"
         x.report("query") { SCHEMA.execute(document: DOCUMENT) }
       when "validate"
-        x.report("validate") { SCHEMA.validate(DOCUMENT) }
+        x.report("validate - introspection ") { CARD_SCHEMA.validate(DOCUMENT) }
+        x.report("validate - abstract fragments") { CARD_SCHEMA.validate(ABSTRACT_FRAGMENTS) }
       else
         raise("Unexpected task #{task}")
       end

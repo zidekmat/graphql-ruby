@@ -90,6 +90,11 @@ module GraphQL
         @visible_possible_types[type_defn]
       end
 
+      # TODO can this replace the original?
+      def possible_types_set(type_defn)
+        Set.new(possible_types(type_defn))
+      end
+
       # @param type_defn [GraphQL::ObjectType, GraphQL::InterfaceType]
       # @return [Array<GraphQL::Field>] Fields on `type_defn`
       def fields(type_defn)

@@ -218,7 +218,7 @@ module GraphQL
       @valid
     end
 
-    def_delegators :@warden, :get_type, :get_field, :possible_types, :root_type_for_operation
+    def_delegators :@warden, :get_type, :get_field, :possible_types, :root_type_for_operation, :possible_types_set
 
 
     # @param value [Object] Any runtime value

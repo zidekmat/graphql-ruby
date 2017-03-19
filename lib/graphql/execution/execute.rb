@@ -32,7 +32,7 @@ module GraphQL
             selection_result,
             subselection,
             current_type,
-            subselection.definition,
+            query.get_field(current_type, name),
             object,
             query_ctx
           )

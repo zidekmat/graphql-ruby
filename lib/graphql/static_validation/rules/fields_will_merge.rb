@@ -5,10 +5,16 @@ module GraphQL
       def validate(context)
         context.each_irep_node do |node|
           if node.ast_nodes.size > 1
-
             # Check for more than one GraphQL::Field backing this node:
-            if node.definitions.size > 1
-              defn_names = node.definitions.map { |d| d.name }.sort.join(" or ")
+            defn_names = Set.new
+            return_types = Set.new
+            node.definitions.each do |defn|
+              defn_names.add(defn.name)
+              return_types.add(defn.type)
+            end
+
+            if defn_names.size > 1 || return_types.size > 1
+              defn_names = defn_names.sort.join(" or ")
               msg = "Field '#{node.name}' has a field conflict: #{defn_names}?"
               context.errors << GraphQL::StaticValidation::Message.new(msg, nodes: node.ast_nodes.to_a)
             end

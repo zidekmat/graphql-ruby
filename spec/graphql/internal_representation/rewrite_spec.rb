@@ -153,6 +153,7 @@ describe GraphQL::InternalRepresentation::Rewrite do
       plant_selection = doc.typed_children[schema.types["Query"]]["plant"]
       leaf_type_selection = plant_selection.typed_children[schema.types["Nut"]]["leafType"]
       # Only unskipped occurrences in the AST
+      leaf_type_selection.ast_nodes.map { |n| puts(n.to_query_string) }
       assert_equal 2, leaf_type_selection.ast_nodes.size
     end
   end
