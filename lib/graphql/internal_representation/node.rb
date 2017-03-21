@@ -90,7 +90,7 @@ module GraphQL
       end
 
       def inspect
-        "#<Node #{@owner_type}.#{@name} -> #{@return_type}>"
+        "#<Node #{@owner_type}.#{@name} -> #{@return_type} [#{ast_node.line}:#{ast_node.col}]>"
       end
 
       # Merge selections from `new_parent` into `self`.
