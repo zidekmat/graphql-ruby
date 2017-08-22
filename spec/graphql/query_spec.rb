@@ -681,4 +681,56 @@ describe GraphQL::Query do
       assert_equal msg, err.message
     end
   end
+
+  describe "cached results" do
+    let(:schema) { GraphQL::Schema.from_definition(<<-GRAPHQL
+    type Counter {
+      count: Int
+      set(value: Int!): Counter
+      asList(times: Int!): [Counter]
+    }
+
+    type Query {
+      set(value: Int!): Counter
+    }
+    GRAPHQL
+    )}
+
+    class TestCounter
+      def self.set(args, ctx)
+        self.new.set(value: args[:value])
+      end
+
+      def set(value:)
+        @value = value
+        self
+      end
+
+      def count
+        @value += 1
+      end
+
+      def asList(args, ctx) # rubocop:disable Style/MethodName
+        args[:times].times.map { self }
+      end
+    end
+
+    it "resolves fields as few times as needed" do
+      query = <<-GRAPHQL
+      {
+        set(value: 3) {
+          count
+          asList(times: 3) {
+            count
+          }
+        }
+      }
+      GRAPHQL
+      result =  schema.execute(query, root_value: TestCounter)
+      # The first count increments from 3 to 4
+      assert_equal 4, result["data"]["set"]["count"]
+      # Count is only called once, from 4 to 5
+      assert_equal [5,5,5], result["data"]["set"]["asList"].map { |c| c["count"]}
+    end
+  end
 end

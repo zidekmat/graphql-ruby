@@ -37,14 +37,16 @@ module GraphQL
           selection_result = SelectionResult.new
 
           selection.typed_children[current_type].each do |name, subselection|
-            field_result = resolve_field(
-              selection_result,
-              subselection,
-              current_type,
-              subselection.definition,
-              object,
-              query_ctx
-            )
+            field_result = subselection.result_for(object) do
+              resolve_field(
+                selection_result,
+                subselection,
+                current_type,
+                subselection.definition,
+                object,
+                query_ctx
+              )
+            end
 
             if field_result.is_a?(Skip)
               next

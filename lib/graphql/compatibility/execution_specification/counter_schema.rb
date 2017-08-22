@@ -18,6 +18,7 @@ module GraphQL
             interfaces [has_count_interface]
             field :count, types.Int, resolve: ->(o,a,c) { schema.metadata[:count] += 1 }
             field :counter, has_count_interface, resolve: ->(o,a,c) { :counter }
+            field :asList, types[counter_type], resolve: ->(o, a, c) { 3.times.map { o } }
           end
 
           alt_counter_type = GraphQL::ObjectType.define do

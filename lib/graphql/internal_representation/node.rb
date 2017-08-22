@@ -80,6 +80,7 @@ module GraphQL
         @scoped_children = other_node.scoped_children.dup
         @ast_nodes = other_node.ast_nodes.dup
         @definitions = other_node.definitions.dup
+        @results = other_node.results.dup
       end
 
       def ==(other)
@@ -142,12 +143,20 @@ module GraphQL
         end
       end
 
+      # Get the result for `object` if we have it already,
+      # otherwise yield it and cache the response
+      def result_for(object)
+        (@results ||= {})[object] ||= yield(object)
+      end
+
       # @return [GraphQL::Query]
       attr_reader :query
 
       protected
 
       attr_writer :owner_type, :parent
+
+      attr_reader :results
 
       private
 

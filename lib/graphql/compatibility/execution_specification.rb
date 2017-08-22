@@ -40,6 +40,11 @@ module GraphQL
           self.specification_schema = SpecificationSchema.build(execution_strategy)
           self.counter_schema = CounterSchema.build(execution_strategy)
 
+          def setup
+            self.class.counter_schema.metadata[:count] = 0
+            super
+          end
+
           def execute_query(query_string, **kwargs)
             kwargs[:root_value] = SpecificationSchema::DATA
             self.class.specification_schema.execute(query_string, **kwargs)
@@ -338,6 +343,24 @@ module GraphQL
               "counter" => { "counter" => { "count" => 2 } }
             }
             assert_equal expected_data, res["data"]
+          end
+
+          def test_it_only_runs_fields_once_per_object
+            res = self.class.counter_schema.execute <<-GRAPHQL
+            {
+              counter {
+                ... on Counter {
+                  count
+                  asList {
+                    count
+                  }
+                }
+              }
+            }
+            GRAPHQL
+            counter_data = res["data"]["counter"]
+            assert_equal 1, counter_data["count"]
+            assert_equal [2,2,2], counter_data["asList"].map { |c| c["count"] }
           end
 
           def test_it_runs_middleware

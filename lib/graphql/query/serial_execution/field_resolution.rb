@@ -22,11 +22,13 @@ module GraphQL
         end
 
         def result
-          result_name = irep_node.name
-          raw_value = get_raw_value
+          raw_value = irep_node.result_for(@target) do
+            get_raw_value
+          end
           if raw_value.is_a?(GraphQL::Execution::Execute::Skip)
             {}
           else
+            result_name = irep_node.name
             { result_name => get_finished_value(raw_value) }
           end
         end
