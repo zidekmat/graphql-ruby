@@ -10,6 +10,12 @@ module GraphQLBenchmark
 
   BENCHMARK_PATH = File.expand_path("../", __FILE__)
   CARD_SCHEMA = GraphQL::Schema.from_definition(File.read(File.join(BENCHMARK_PATH, "schema.graphql")))
+  CARD_TYPE = CARD_SCHEMA.types["Card"]
+  ROOTS = [
+    CARD_SCHEMA.query,
+    CARD_SCHEMA.mutation,
+    CARD_SCHEMA.subscription,
+  ]
   ABSTRACT_FRAGMENTS = GraphQL.parse(File.read(File.join(BENCHMARK_PATH, "abstract_fragments.graphql")))
   ABSTRACT_FRAGMENTS_2 = GraphQL.parse(File.read(File.join(BENCHMARK_PATH, "abstract_fragments_2.graphql")))
 
@@ -24,6 +30,21 @@ module GraphQLBenchmark
         x.report("validate - introspection ") { CARD_SCHEMA.validate(DOCUMENT) }
         x.report("validate - abstract fragments") { CARD_SCHEMA.validate(ABSTRACT_FRAGMENTS) }
         x.report("validate - abstract fragments 2") { CARD_SCHEMA.validate(ABSTRACT_FRAGMENTS_2) }
+      when "comparison"
+        x.report("Array#include?") {
+          [
+            CARD_SCHEMA.query,
+            CARD_SCHEMA.mutation,
+            CARD_SCHEMA.subscription,
+          ].include?(CARD_TYPE)
+        }
+        x.report("Constant #include?") {
+          ROOTS.include?(CARD_TYPE)
+        }
+        x.report("#==") {
+          CARD_SCHEMA.query == CARD_TYPE || CARD_SCHEMA.mutation == CARD_TYPE || CARD_SCHEMA.subscription == CARD_TYPE
+        }
+        x.compare!
       else
         raise("Unexpected task #{task}")
       end

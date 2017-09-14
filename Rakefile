@@ -58,6 +58,12 @@ namespace :bench do
     GraphQLBenchmark.run("validate")
   end
 
+  desc "Benchmark type comparison"
+  task :comparison do
+    prepare_benchmark
+    GraphQLBenchmark.run("comparison")
+  end
+
   desc "Generate a profile of the introspection query"
   task :profile do
     prepare_benchmark
