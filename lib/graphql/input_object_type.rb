@@ -128,11 +128,12 @@ module GraphQL
       end
 
       visible_arguments_map = warden.arguments(self).reduce({}) { |m, f| m[f.name] = f; m}
+      pp [self.arguments.keys, "=>", visible_arguments_map.keys]
 
       # Items in the input that are unexpected
       input.each do |name, value|
         if visible_arguments_map[name].nil?
-          result.add_problem("Field is not defined on #{self.name}", [name])
+          result.add_problem("Field `#{name}` is not defined on #{self.name}", [name])
         end
       end
 

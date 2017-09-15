@@ -112,6 +112,7 @@ describe GraphQL::InputObjectType do
           assert(paths.include?(["fatContent"]))
         end
 
+        focus
         it "has correct problem explanation" do
           expected = Dummy::DairyAnimalEnum.validate_isolated_input("KOALA").problems[0]["explanation"]
 
@@ -182,7 +183,7 @@ describe GraphQL::InputObjectType do
 
         it "has problem with correct path" do
           paths = result.problems.map { |p| p["path"] }
-          assert_equal(paths, [["isDelicious"]])
+          assert_equal([["isDelicious"]], paths)
         end
 
         it "has correct problem explanation" do
