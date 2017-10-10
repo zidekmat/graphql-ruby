@@ -114,6 +114,30 @@ describe GraphQL::Query::Variables do
           assert_equal nil, result["data"]
         end
       end
+
+      describe "non-null list of nullable members" do
+        let(:schema) { GraphQL::Schema.from_definition(%|
+          input StringsList {
+            strings: [String]!
+          }
+          type Query {
+            thingsCount(input: StringsList): Int!
+          }
+        |)
+        }
+
+        let(:query_string) {%|
+          query getThingsCount($val: [String]!) {
+            thingsCount(input: { strings: $val })
+          }
+        |}
+
+        let(:provided_variables) { { "val" => [] } }
+
+        it "accepts an empty array" do
+          assert_equal 1, result["data"]["thingsCount"]
+        end
+      end
     end
 
     describe "coercing null" do
