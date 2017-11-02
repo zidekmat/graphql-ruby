@@ -88,6 +88,27 @@ describe GraphQL::Query do
       query.query_string = '{ __type(name: "Cheese") { name } }'
       assert_equal "Cheese", query.result["data"] ["__type"]["name"]
     end
+
+    describe "assignment during before_query" do
+      class QueryStringInstrumenter
+        def self.before_query(q)
+          q.query_string = q.context[:query_string]
+        end
+        def self.after_query(q);
+        end
+      end
+
+      let(:schema) {
+        Dummy::Schema.redefine {
+          instrument(:query, QueryStringInstrumenter)
+        }
+      }
+
+      it 'can be assigned during before_query' do
+        res = schema.execute(nil, context: { query_string: "{ cheese(id: 1) { flavor } }"})
+        assert_equal "Brie", res["data"]["cheese"]["flavor"]
+      end
+    end
   end
 
   describe "#operation_name" do

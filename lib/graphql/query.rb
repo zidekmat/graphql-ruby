@@ -5,12 +5,12 @@ require "graphql/query/context"
 require "graphql/query/executor"
 require "graphql/query/literal_input"
 require "graphql/query/null_context"
+require "graphql/query/preparation_pipeline"
 require "graphql/query/result"
 require "graphql/query/serial_execution"
 require "graphql/query/variables"
 require "graphql/query/input_validation_result"
 require "graphql/query/variable_validation_error"
-require "graphql/query/validation_pipeline"
 
 module GraphQL
   # A combination of query string and {Schema} instance which can be reduced to a {#result}.
@@ -41,13 +41,14 @@ module GraphQL
 
     # @return [GraphQL::Language::Nodes::Document]
     def document
-      with_prepared_ast { @document }
+      prepare
+      @document
     end
 
     # @return [String, nil] The name of the operation to run (may be inferred)
     def selected_operation_name
-      return nil unless selected_operation
-      selected_operation.name
+      prepare
+      selected_operation && selected_operation.name
     end
 
     # @return [String, nil] the triggered event, if this query is a subscription update
@@ -86,6 +87,9 @@ module GraphQL
       end
 
       @analysis_errors = []
+      @validation_errors = []
+      @analyzers = []
+
       if variables.is_a?(String)
         raise ArgumentError, "Query variables should be a Hash, not a String. Try JSON.parse to prepare variables."
       else
@@ -111,16 +115,16 @@ module GraphQL
 
       # Trying to execute a document
       # with no operations returns an empty hash
-      @ast_variables = []
       @mutation = false
+      @query = false
+      @subscription = false
       @operation_name = operation_name
-      @prepared_ast = false
-      @validation_pipeline = nil
       @max_depth = max_depth || schema.max_depth
       @max_complexity = max_complexity || schema.max_complexity
-
       @result_values = nil
       @executed = false
+      @prepared = false
+      @warden = GraphQL::Schema::Warden.new(@filter, schema: @schema, context: @context)
     end
 
     def subscription_update?
@@ -138,20 +142,21 @@ module GraphQL
     end
 
     def fragments
-      with_prepared_ast { @fragments }
+      prepare
+      @fragments
     end
 
     def operations
-      with_prepared_ast { @operations }
+      prepare
+      @operations
     end
 
     # Get the result for this query, executing it once
     # @return [Hash] A GraphQL response, with `"data"` and/or `"errors"` keys
     def result
       if !@executed
-        with_prepared_ast {
-          Execution::Multiplex.run_queries(@schema, [self])
-        }
+        prepare
+        Execution::Multiplex.run_queries(@schema, [self])
       end
       @result ||= Query::Result.new(query: self, values: @result_values)
     end
@@ -164,7 +169,8 @@ module GraphQL
     # If more than one operation is present, it must be named at runtime.
     # @return [GraphQL::Language::Nodes::OperationDefinition, nil]
     def selected_operation
-      with_prepared_ast { @selected_operation }
+      prepare
+      @selected_operation
     end
 
     # Determine the values for variables of this query, using default values
@@ -174,21 +180,17 @@ module GraphQL
     #
     # @return [GraphQL::Query::Variables] Variables to apply to this query
     def variables
-      @variables ||= begin
-        with_prepared_ast {
-          GraphQL::Query::Variables.new(
-            @context,
-            @ast_variables,
-            @provided_variables,
-          )
-        }
-      end
+      prepare
+      @variables
     end
 
     def irep_selection
       @selection ||= begin
-        return nil unless selected_operation
-        internal_representation.operation_definitions[selected_operation.name]
+        if selected_operation
+          internal_representation.operation_definitions[selected_operation.name]
+        else
+          nil
+        end
       end
     end
 
@@ -199,25 +201,20 @@ module GraphQL
       @arguments_cache[irep_or_ast_node][definition]
     end
 
-    # @return [GraphQL::Language::Nodes::OperationDefinition, nil]
-    def selected_operation
-      with_prepared_ast { @selected_operation }
-    end
-
-    def validation_pipeline
-      with_prepared_ast { @validation_pipeline }
-    end
-
-    def_delegators :validation_pipeline, :validation_errors, :internal_representation, :analyzers
-
+    attr_reader :analyzers, :validation_errors, :max_depth, :max_complexity
     attr_accessor :analysis_errors
-    def valid?
-      validation_pipeline.valid? && analysis_errors.none?
+
+    def internal_representation
+      prepare
+      @internal_representation
     end
 
-    def warden
-      with_prepared_ast { @warden }
+    def valid?
+      prepare
+      validation_errors.none? && analysis_errors.none? && @context.errors.none?
     end
+
+    attr_reader :warden
 
     def_delegators :warden, :get_type, :get_field, :possible_types, :root_type_for_operation
 
@@ -235,16 +232,18 @@ module GraphQL
     end
 
     def mutation?
-      with_prepared_ast { @mutation }
+      prepare
+      @mutation
     end
 
     def query?
-      with_prepared_ast { @query }
+      prepare
+      @query
     end
 
     # @return [void]
     def merge_filters(only: nil, except: nil)
-      if @prepared_ast
+      if @prepared
         raise "Can't add filters after preparing the query"
       else
         @filter = @filter.merge(only: only, except: except)
@@ -253,92 +252,18 @@ module GraphQL
     end
 
     def subscription?
-      with_prepared_ast { @subscription }
+      prepare
+      @subscription
     end
 
-    private
-
-    def find_operation(operations, operation_name)
-      if operation_name.nil? && operations.length == 1
-        operations.values.first
-      elsif !operations.key?(operation_name)
-        nil
-      else
-        operations.fetch(operation_name)
+    # Parse the AST, validate, prepare IRep
+    # @return [void]
+    # @api private
+    def prepare
+      if !@prepared
+        @prepared = true
+        PreparationPipeline.call(self)
       end
-    end
-
-    def prepare_ast
-      @prepared_ast = true
-      @warden = GraphQL::Schema::Warden.new(@filter, schema: @schema, context: @context)
-
-      parse_error = nil
-      @document ||= begin
-        if query_string
-          GraphQL.parse(query_string, tracer: self)
-        end
-      rescue GraphQL::ParseError => err
-        parse_error = err
-        @schema.parse_error(err, @context)
-        nil
-      end
-
-      @fragments = {}
-      @operations = {}
-      if @document
-        @document.definitions.each do |part|
-          case part
-          when GraphQL::Language::Nodes::FragmentDefinition
-            @fragments[part.name] = part
-          when GraphQL::Language::Nodes::OperationDefinition
-            @operations[part.name] = part
-          end
-        end
-      elsif parse_error
-        # This will be handled later
-      else
-        parse_error = GraphQL::ExecutionError.new("No query string was present")
-        @context.add_error(parse_error)
-      end
-
-      # Trying to execute a document
-      # with no operations returns an empty hash
-      @ast_variables = []
-      @mutation = false
-      @subscription = false
-      operation_name_error = nil
-      if @operations.any?
-        @selected_operation = find_operation(@operations, @operation_name)
-        if @selected_operation.nil?
-          operation_name_error = GraphQL::Query::OperationNameMissingError.new(@operation_name)
-        else
-          if @operation_name.nil?
-            @operation_name = @selected_operation.name
-          end
-          @ast_variables = @selected_operation.variables
-          @mutation = @selected_operation.operation_type == "mutation"
-          @query = @selected_operation.operation_type == "query"
-          @subscription = @selected_operation.operation_type == "subscription"
-        end
-      end
-
-      @validation_pipeline = GraphQL::Query::ValidationPipeline.new(
-        query: self,
-        validate: @validate,
-        parse_error: parse_error,
-        operation_name_error: operation_name_error,
-        max_depth: @max_depth,
-        max_complexity: @max_complexity || schema.max_complexity,
-      )
-    end
-
-    # Since the query string is processed at the last possible moment,
-    # any internal values which depend on it should be accessed within this wrapper.
-    def with_prepared_ast
-      if !@prepared_ast
-        prepare_ast
-      end
-      yield
     end
   end
 end
