@@ -27,22 +27,26 @@ module Jazz
     end
   end
 
-  class BaseObject < GraphQL::Object
-    class << self
-      def config(key, value)
-        configs[key] = value
-      end
+  module Graph
+    include GraphQL::TypeSystem
 
-      def configs
-        @configs ||= {}
-      end
-
-      def to_graphql
-        type_defn = super
-        configs.each do |k,v|
-          type_defn.metadata[k] = v
+    class Object < GraphQL::Object
+      class << self
+        def config(key, value)
+          configs[key] = value
         end
-        type_defn
+
+        def configs
+          @configs ||= {}
+        end
+
+        def to_graphql
+          type_defn = super
+          configs.each do |k,v|
+            type_defn.metadata[k] = v
+          end
+          type_defn
+        end
       end
     end
 
@@ -67,7 +71,7 @@ module Jazz
   end
 
   # Some arbitrary global ID scheme
-  class GloballyIdentifiable < GraphQL::Interface
+  class GloballyIdentifiable < Graph::Interface
     description "A fetchable object in the system"
     field :id, "ID", "A unique identifier for this object", null: false
 
@@ -95,7 +99,7 @@ module Jazz
 
 
   # Here's a new-style GraphQL type definition
-  class Ensemble < BaseObject
+  class Ensemble < Graph::Object
     implements GloballyIdentifiable, NamedEntity
     description "A group of musicians playing together"
     config :config, :configged
@@ -109,7 +113,7 @@ module Jazz
     end
   end
 
-  class Family < GraphQL::Enum
+  class Family < Graph::Enum
     description "Groups of musical instruments"
     # support string and symbol
     value "STRING", "Makes a sound by vibrating strings", value: :str
@@ -136,7 +140,7 @@ module Jazz
     end
   end
 
-  class Musician < BaseObject
+  class Musician < Graph::Object
     implements GloballyIdentifiable
     implements NamedEntity
     description "Someone who plays an instrument"
@@ -144,7 +148,7 @@ module Jazz
   end
 
   # Another new-style definition, with method overrides
-  class Query < BaseObject
+  class Query < Graph::Object
     field :ensembles, [Ensemble], null: false
     field :find, GloballyIdentifiable, null: true do
       argument :id, "ID", null: false
@@ -170,11 +174,11 @@ module Jazz
     end
   end
 
-  class EnsembleInput < GraphQL::InputObject
+  class EnsembleInput < Graph::InputObject
     argument :name, String, null: false
   end
 
-  class Mutation < BaseObject
+  class Mutation < Graph::Object
     field :addEnsemble, Ensemble, null: false do
       argument :input, EnsembleInput, null: false
     end
@@ -189,7 +193,7 @@ module Jazz
   end
 
   # New-style Schema definition
-  class Schema < GraphQL::Schema
+  class Schema < Graph::Schema
     query(Query)
     mutation(Mutation)
 

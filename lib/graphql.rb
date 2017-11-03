@@ -118,6 +118,7 @@ require "graphql/parse_error"
 require "graphql/backtrace"
 
 require "graphql/schema_member"
+require "graphql/type_system"
 require "graphql/object"
 require "graphql/enum"
 require "graphql/interface"
